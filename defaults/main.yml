@@ -116,12 +116,14 @@ postgresql_ssl_ciphers:
   - '@STRENGTH'
 postgresql_ssl_prefer_server_ciphers: on
 postgresql_ssl_ecdh_curve: 'prime256v1'
+postgresql_ssl_dh_params_file: ''         # (>= 10)
 postgresql_ssl_renegotiation_limit: 512MB # amount of data between renegotiations
 postgresql_ssl_cert_file: /etc/ssl/certs/ssl-cert-snakeoil.pem  # (>= 9.2)
 postgresql_ssl_key_file: /etc/ssl/private/ssl-cert-snakeoil.key # (>= 9.2)
 postgresql_ssl_ca_file: ''                                      # (>= 9.2)
 postgresql_ssl_crl_file: ''                                     # (>= 9.2)
-postgresql_password_encryption: on
+postgresql_password_encryption: >         # (>= 9.6) on/off; (>9.6) md5 or scram-sha-256
+  "{{on if (postgresql_version | version_compare('9.6', '<=')) else md5}}"
 postgresql_db_user_namespace: off
 postgresql_row_security: off # (>= 9.5)
 
@@ -190,18 +192,24 @@ postgresql_vacuum_cost_limit:      200     # 1-10000 credits
 postgresql_bgwriter_delay:          200ms  # 10-10000ms between rounds
 postgresql_bgwriter_lru_maxpages:   100    # 0-1000 max buffers written/round
 postgresql_bgwriter_lru_multiplier: 2.0    # 0-10.0 multiplier on buffers scanned/round
-postgresql_bgwriter_flush_after:    0      # (>= 9.6) 0 disables,
-                                           # default is 512kB on linux, 0 otherwise
+postgresql_bgwriter_flush_after:    0      # (>= 9.6) 0 disables, default is 512kB on linux, 0 otherwise
+                                           # (> 10) measured in pages, 0 disables
 
 
 # - Asynchronous Behavior -
 
 postgresql_effective_io_concurrency:        1   # 1-1000; 0 disables prefetching
 postgresql_max_worker_processes:            8   # (change requires restart)
-postgresql_max_parallel_workers_per_gather: 0   # (>= 9.6) taken from max_worker_processes
+postgresql_max_parallel_workers_per_gather: >   # (>= 9.6, < 10) taken from max_worker_processes;
+                                                # (>= 10) taken from max_parallel_workers
+  "{{0 if (postgresql_version | version_compare('9.6', '<=')) else 2}}"
+postgresql_max_parallel_workers:            8   # (>= 10) maximum number of max_worker_processes that
+                                                # can be used in parallel queries
+
 postgresql_old_snapshot_threshold:          -1  # (>= 9.6) 1min-60d; -1 disables; 0 is immediate
                                                 # (change requires restart)
 postgresql_backend_flush_after:             0   # (>= 9.6) 0 disables, default is 0
+                                                # (>= 10) measured in pages, default is 0)
 
 
 #------------------------------------------------------------------------------
@@ -210,7 +218,8 @@ postgresql_backend_flush_after:             0   # (>= 9.6) 0 disables, default i
 
 # - Settings -
 
-postgresql_wal_level: minimal     # minimal, archive (<= 9.5), hot_standby (<= 9.5), replica (>= 9.6), or logical
+postgresql_wal_level: >                   # minimal, archive (<= 9.5), hot_standby (<= 9.5), replica (>= 9.6), or logical
+  "{{minimal if (postgresql_version | version_compare('9.6', '<=')) else replica}}"
 postgresql_fsync:     on          # flush data to disk for crash safety
                                           # (turning this off can cause
                                           # unrecoverable data corruption)
@@ -239,6 +248,7 @@ postgresql_wal_log_hints: off       # also do full page writes of non-critical u
 postgresql_wal_buffers:            -1     # min 32kB, -1 sets based on shared_buffers
 postgresql_wal_writer_delay:       200ms  # 1-10000 milliseconds
 postgresql_wal_writer_flush_after: 1MB    # (>= 9.6) 0 disables
+                                          # (>= 10) measured in pages, 0 disables
 postgresql_commit_delay:           0      # range 0-100000, in microseconds
 postgresql_commit_siblings:        5      # range 1-1000
 
@@ -248,8 +258,8 @@ postgresql_commit_siblings:        5      # range 1-1000
 postgresql_checkpoint_segments:          3     # (<= 9.4) in logfile segments, min 1, 16MB each
 postgresql_max_wal_size:                 1GB   # (>= 9.5)
 postgresql_min_wal_size:                 80MB  # (>= 9.5)
-postgresql_checkpoint_flush_after:       0     # (>= 9.6) 0 disables,
-                                               # default is 256kB on linux, 0 otherwise
+postgresql_checkpoint_flush_after:       0     # (>= 9.6) 0 disables, default is 256kB on linux, 0 otherwise
+                                               # (>= 10) measured in pages, 0 disables
 postgresql_checkpoint_timeout:           5min  # range 30s-1d
 postgresql_checkpoint_completion_target: 0.5   # checkpoint target duration, 0.0 - 1.0
 postgresql_checkpoint_warning:           30s   # 0 disables
@@ -279,13 +289,14 @@ postgresql_archive_timeout: 0
 # Set these on the master and on any standby that will send replication data.
 
 # max number of walsender processes
-postgresql_max_wal_senders: 0
+postgresql_max_wal_senders: "{{0 if (postgresql_version | version_compare('9.6', '<=')) else 10}}"
 postgresql_wal_sender_delay: 1s     # walsender cycle time, 1-10000 milliseconds (<= 9.1)
 
 postgresql_wal_keep_segments:  0    # in logfile segments, 16MB each; 0 disables
 postgresql_replication_timeout: 60s # in milliseconds; 0 disables (<= 9.2)
 postgresql_wal_sender_timeout: 60s  # in milliseconds; 0 disables (>= 9.3)
-postgresql_max_replication_slots: 0 # max number of replication slots
+postgresql_max_replication_slots: > # max number of replication slots
+  "{{0 if (postgresql_version | version_compare('9.6', '<=')) else 10}}"
 
 postgresql_track_commit_timestamp: off # (>= 9.5)
 
@@ -295,8 +306,11 @@ postgresql_track_commit_timestamp: off # (>= 9.5)
 
 # standby servers that provide sync rep.
 # number of sync standbys (>= 9.6) and comma-separated list of application_name from standby(s)
-postgresql_synchronous_standby_num_sync: ''
-postgresql_synchronous_standby_names: [] # '*' means 'all'
+postgresql_synchronous_standby_num_sync: '' # (>= 9.6) number of sync standbys
+postgresql_synchronous_standby_choice_method: '' # (>= 10) method to choose standbys: FIRST (implicit default) or ANY
+postgresql_synchronous_standby_names: [] # list of application_name from standby(s); '*' means 'all'
+
+
 
 # number of xacts by which cleanup is delayed
 postgresql_vacuum_defer_cleanup_age: 0
@@ -304,8 +318,9 @@ postgresql_vacuum_defer_cleanup_age: 0
 
 # - Standby Servers -
 
-# "on" allows queries during recovery
-postgresql_hot_standby: off
+# "off" disallows queries during recovery
+postgresql_hot_standby: off >
+  "{{off if (postgresql_version | version_compare('9.6', '<=')) else on}}"
 # max delay before canceling queries when reading WAL from archive
 postgresql_max_standby_archive_delay: 30s # -1 allows indefinite delay
 # max delay before canceling queries when reading streaming WAL;
@@ -318,6 +333,16 @@ postgresql_hot_standby_feedback: off
 postgresql_wal_receiver_timeout: 60s
 # time to wait before retrying to retrieve WAL after a failed attempt
 postgresql_wal_retrieve_retry_interval: 5s # (>= 9.5)
+
+
+# - Subscribers -
+
+# These settings are ignored on a publisher.
+
+postgresql_max_logical_replication_workers: 4    # (>= 10) taken from max_worker_processes
+                                                 # (change requires restart)
+postgresql_max_sync_workers_per_subscription: 2  # (>= 10) taken from max_logical_replication_workers
+
 
 #------------------------------------------------------------------------------
 # QUERY TUNING
@@ -340,15 +365,17 @@ postgresql_enable_tidscan:             on
 
 # - Planner Cost Constants -
 
-postgresql_seq_page_cost:              1.0     # measured on an arbitrary scale
-postgresql_random_page_cost:           4.0     # same scale as above
-postgresql_cpu_tuple_cost:             0.01    # same scale as above
-postgresql_cpu_index_tuple_cost:       0.005   # same scale as above
-postgresql_cpu_operator_cost:          0.0025  # same scale as above
-postgresql_parallel_tuple_cost:        0.1     # same scale as above (>= 9.6)
-postgresql_parallel_setup_cost:        1000.0  # same scale as above (>= 9.6)
-postgresql_min_parallel_relation_size: 8MB     # (>= 9.6)
-postgresql_effective_cache_size:       128MB
+postgresql_seq_page_cost:                 1.0     # measured on an arbitrary scale
+postgresql_random_page_cost:              4.0     # same scale as above
+postgresql_cpu_tuple_cost:                0.01    # same scale as above
+postgresql_cpu_index_tuple_cost:          0.005   # same scale as above
+postgresql_cpu_operator_cost:             0.0025  # same scale as above
+postgresql_parallel_tuple_cost:           0.1     # same scale as above (>= 9.6)
+postgresql_parallel_setup_cost:           1000.0  # same scale as above (>= 9.6)
+postgresql_min_parallel_relation_size:    8MB     # (>= 9.6; < 10)
+postgresql_min_parallel_table_scan_size:  8MB     # (>= 10) Above renamed
+postgresql_min_parallel_index_scan_size:  512kB   # (>= 10)
+postgresql_effective_cache_size:          "{{'128MB' if (postgresql_version | version_compare('9.3', '<=')) else 4GB}}"
 
 
 # - Genetic Query Optimizer -
@@ -389,7 +416,7 @@ postgresql_logging_collector:          off
 # These are only used if logging_collector is on:
 
 # Directory where log files are written, can be absolute or relative to PGDATA
-postgresql_log_directory:              pg_log
+postgresql_log_directory:              "{{'pg_log' if (postgresql_version | version_compare('9.6', '<=')) else 'log'}}"
 # Log file name pattern, can include strftime() escapes
 postgresql_log_filename:               postgresql-%Y-%m-%d_%H%M%S.log
 postgresql_log_file_mode:              '0600' # begin with 0 to use octal notation
@@ -494,7 +521,7 @@ postgresql_log_hostname:          off
 #   %q = stop here in non-session
 #        processes
 #   %% = '%'
-postgresql_log_line_prefix: '%t '
+postgresql_log_line_prefix: "{{'' if (postgresql_version | version_compare('9.6', '<=')) else '%m [%p] '}}"
 
 # log lock waits >= deadlock_timeout
 postgresql_log_lock_waits: off
@@ -638,6 +665,10 @@ postgresql_max_locks_per_transaction: 64         # min 10
 # max_locks_per_transaction * (max_connections + max_prepared_transactions)
 # lock table slots.
 postgresql_max_pred_locks_per_transaction: 64    # min 10
+postgresql_max_pred_locks_per_relation:    -2    # (>= 10) negative values mean
+                                                 # (max_pred_locks_per_transaction
+                                                 #  / -max_pred_locks_per_relation) - 1
+postgresql_max_pred_locks_per_page:        2     # (>= 10) min 0
 
 
 #------------------------------------------------------------------------------
@@ -713,6 +744,7 @@ postgresql_pgdg_releases:
       9.4: 3,
       9.5: 3,
       9.6: 3,
+      10:  2,
   }
   centos: {
       9.1: 7,
@@ -721,6 +753,7 @@ postgresql_pgdg_releases:
       9.4: 3,
       9.5: 3,
       9.6: 3,
+      10:  2,
   }
   sl: {
       9.1: 8,
@@ -729,6 +762,7 @@ postgresql_pgdg_releases:
       9.4: 3,
       9.5: 3,
       9.6: 3,
+      10:  2,
   }
   oraclelinux: {
       9.1: 8,
@@ -737,6 +771,7 @@ postgresql_pgdg_releases:
       9.4: 3,
       9.5: 3,
       9.6: 3,
+      10:  2,
   }
 postgresql_version_terse: "{{ postgresql_version | replace('.', '') }}"
 postgresql_yum_repository_base_url: "http://yum.postgresql.org"
