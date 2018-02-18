@@ -525,7 +525,8 @@ postgresql_log_line_prefix: "{{'' if (postgresql_version | version_compare('9.6'
 
 # log lock waits >= deadlock_timeout
 postgresql_log_lock_waits: off
-postgresql_log_statement:  none  # none, ddl, mod, all
+postgresql_log_statement:  none          # none, ddl, mod, all
+postgresql_log_replication_commands: off # (>= 9.5)
 # log temporary files equal or larger
 postgresql_log_temp_files: -1
 postgresql_log_timezone:   UTC
