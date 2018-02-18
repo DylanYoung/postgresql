@@ -122,8 +122,8 @@ postgresql_ssl_cert_file: /etc/ssl/certs/ssl-cert-snakeoil.pem  # (>= 9.2)
 postgresql_ssl_key_file: /etc/ssl/private/ssl-cert-snakeoil.key # (>= 9.2)
 postgresql_ssl_ca_file: ''                                      # (>= 9.2)
 postgresql_ssl_crl_file: ''                                     # (>= 9.2)
-postgresql_password_encryption: >         # (>= 9.6) on/off; (>9.6) md5 or scram-sha-256
-  "{{on if (postgresql_version | version_compare('9.6', '<=')) else md5}}"
+postgresql_password_encryption:           # (>= 9.6) on/off; (>9.6) md5 or scram-sha-256
+  "{{'on' if (postgresql_version | version_compare('9.6', '<=')) else 'md5'}}"
 postgresql_db_user_namespace: off
 postgresql_row_security: off # (>= 9.5)
 
@@ -200,7 +200,7 @@ postgresql_bgwriter_flush_after:    0      # (>= 9.6) 0 disables, default is 512
 
 postgresql_effective_io_concurrency:        1   # 1-1000; 0 disables prefetching
 postgresql_max_worker_processes:            8   # (change requires restart)
-postgresql_max_parallel_workers_per_gather: >   # (>= 9.6, < 10) taken from max_worker_processes;
+postgresql_max_parallel_workers_per_gather:     # (>= 9.6, < 10) taken from max_worker_processes;
                                                 # (>= 10) taken from max_parallel_workers
   "{{0 if (postgresql_version | version_compare('9.6', '<=')) else 2}}"
 postgresql_max_parallel_workers:            8   # (>= 10) maximum number of max_worker_processes that
@@ -218,9 +218,9 @@ postgresql_backend_flush_after:             0   # (>= 9.6) 0 disables, default i
 
 # - Settings -
 
-postgresql_wal_level: >                   # minimal, archive (<= 9.5), hot_standby (<= 9.5), replica (>= 9.6), or logical
-  "{{minimal if (postgresql_version | version_compare('9.6', '<=')) else replica}}"
-postgresql_fsync:     on          # flush data to disk for crash safety
+postgresql_wal_level:                     # minimal, archive (<= 9.5), hot_standby (<= 9.5), replica (>= 9.6), or logical
+  "{{'minimal' if (postgresql_version | version_compare('9.6', '<=')) else 'replica'}}"
+postgresql_fsync:     on                  # flush data to disk for crash safety
                                           # (turning this off can cause
                                           # unrecoverable data corruption)
 
@@ -295,7 +295,7 @@ postgresql_wal_sender_delay: 1s     # walsender cycle time, 1-10000 milliseconds
 postgresql_wal_keep_segments:  0    # in logfile segments, 16MB each; 0 disables
 postgresql_replication_timeout: 60s # in milliseconds; 0 disables (<= 9.2)
 postgresql_wal_sender_timeout: 60s  # in milliseconds; 0 disables (>= 9.3)
-postgresql_max_replication_slots: > # max number of replication slots
+postgresql_max_replication_slots:   # max number of replication slots
   "{{0 if (postgresql_version | version_compare('9.6', '<=')) else 10}}"
 
 postgresql_track_commit_timestamp: off # (>= 9.5)
@@ -319,8 +319,8 @@ postgresql_vacuum_defer_cleanup_age: 0
 # - Standby Servers -
 
 # "off" disallows queries during recovery
-postgresql_hot_standby: off >
-  "{{off if (postgresql_version | version_compare('9.6', '<=')) else on}}"
+postgresql_hot_standby:
+  "{{'off' if (postgresql_version | version_compare('9.6', '<=')) else 'on'}}"
 # max delay before canceling queries when reading WAL from archive
 postgresql_max_standby_archive_delay: 30s # -1 allows indefinite delay
 # max delay before canceling queries when reading streaming WAL;
@@ -375,7 +375,7 @@ postgresql_parallel_setup_cost:           1000.0  # same scale as above (>= 9.6)
 postgresql_min_parallel_relation_size:    8MB     # (>= 9.6; < 10)
 postgresql_min_parallel_table_scan_size:  8MB     # (>= 10) Above renamed
 postgresql_min_parallel_index_scan_size:  512kB   # (>= 10)
-postgresql_effective_cache_size:          "{{'128MB' if (postgresql_version | version_compare('9.3', '<=')) else 4GB}}"
+postgresql_effective_cache_size:          "{{'128MB' if (postgresql_version | version_compare('9.3', '<=')) else '4GB'}}"
 
 
 # - Genetic Query Optimizer -
